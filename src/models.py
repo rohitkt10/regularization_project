@@ -1,8 +1,15 @@
 import tensorflow as tf
 from tensorflow import keras as tfk
+from .augmentations import Augmentation
 
+class _Model(tfk.Model):
+    """
+    Useful base class when extending the keras.Model class.
+    """
+    def __init__(self, model, name='custom_model'):
+        super().__init__(name=name)
+        self._model = model
 
-class JacobianRegularizedModel(tfk.Model):
     @property
     def model(self):
         return self._model
@@ -27,21 +34,45 @@ class JacobianRegularizedModel(tfk.Model):
         return self.model.load_weights(*args, **kwargs)
 
     def predict(self, *args, **kwargs):
-        return self.last_layer_activation(self.model.predict(*args, **kwargs)).numpy()
+        return self.model.predict(*args, **kwargs)
 
     def call(self, *args, **kwargs):
         return self.model.call(*args, **kwargs)
 
-    def __init__(self, model, name='jacobian_regularized_model'):
-        super().__init__(name=name)
-        self._model = model
+    def test_step(self, data):
+        x,y = data
+        ypred = self(x, training=False)
+        loss = self.compiled_loss(y, ypred, regularization_losses=None)
+        self.compiled_metrics.update_state(y, ypred)
+        res = {m.name:m.result() for m in self.metrics}
+        return res
 
-    def compile(self, optimizer, loss=None, metrics=None, beta=1., last_layer_activation='sigmoid', *args, **kwargs):
+
+class JacobianRegularizedModel(_Model):
+    """
+    Regularize the model by adding the squared Frobenius norm
+    of the output logits wrt to the inputs.
+    """
+
+    def __init__(self, model, name='jacobian_regularized_model'):
+        super().__init__(model=model, name=name)
+
+    def predict(self, *args, **kwargs):
+        return self.last_layer_activation(super().predict(*args, **kwargs)).numpy()
+
+    def compile(self, beta=1., last_layer_activation='sigmoid', **kwargs):
+        """
+        PARAMETERS:
+
+        1. beta <float> - The Jacobian regularization coefficient.
+        2. last_layer_activation <callable> - The activation function to be applied to the model logits.
+        3. kwargs - Additional parameters to be sent to keras.Model.compile.
+        """
         assert beta > 0., "Jacobian regularization coefficient must be positive."
-        self.model.compile(metrics=metrics, loss=loss)
-        super().compile(loss=loss, metrics=metrics, optimizer=optimizer, *args, **kwargs)
         self.beta = tf.Variable(beta, dtype=tf.float32, trainable=False)
         self.last_layer_activation = tfk.layers.Activation(last_layer_activation)
+        self.model.compile(**kwargs)
+        super().compile(**kwargs)
 
     def train_step(self, data):
         x, y = data
@@ -71,7 +102,7 @@ class JacobianRegularizedModel(tfk.Model):
         self.compiled_metrics.update_state(y, ypred)
 
         res = {m.name:m.result() for m in self.metrics}
-        res['jacobian_norm'] = Jfro2
+        res['sq_jacobian_norm'] = Jfro2
         return res
 
     def test_step(self, data):
@@ -81,3 +112,49 @@ class JacobianRegularizedModel(tfk.Model):
         self.compiled_metrics.update_state(y, ypred)
         res = {m.name:m.result() for m in self.metrics}
         return res
+
+class AugmentedModel(_Model):
+    def _check_augmentation_validity(augmentations):
+        res = [isinstance(augmentation, Augmentation) for augmentation in augmentations]
+        assert np.all(res)
+
+    def __init__(self, model, augmentations, subsample=None, name="augmented_model"):
+        """
+        PARAMETERS:
+        1. model <tfk.Model> - Input model.
+        2. augmentations <list of Augmentations> - A list of objects of type Augmentations.
+        3. subsample <int> - Number of samples to retain in the augmented data. By default,
+                             we subsample to the same number as the batch size.
+        """
+        self._check_augmentation_validity(augmentations)
+        super().__init__(model=model, name=name)
+        self.augmentations = augmentations
+        self.subsample = subsample
+
+    def _get_augmented_dataset(self, data):
+        batchsize = tf.shape(data[0])[0]
+
+        augmented_x = []
+        augmented_y = []
+        for augmentation in self.augmentations:
+            (_x, _y) = augmentation(data)
+            augmented_x.append(_x)
+            augmented_y.append(_y)
+        _x = tf.concat(augmented_x, axis=0)
+        _y = tf.concat(augmented_y, axis=0)
+        augmented_batchsize = tf.cast(tf.shape(_x)[0], tf.float32)
+
+        # subsample the augmented dataset
+        if not self.subsample:
+            idx = tf.random.uniform((batchsize,), 0, augmented_batchsize,)
+        else:
+            idx = tf.random.uniform((self.subsample,), 0, augmented_batchsize)
+        idx = tf.cast(tf.math.floor(idx), tf.int32)
+        _x, _y = tf.gather(_x, idx, axis=0), tf.gather(_y, idx, axis=0)
+
+        data = (_x, _y)
+        return data
+
+    def train_step(self, data):
+        data = self._get_augmented_dataset(data)
+        return super().train_step(data)

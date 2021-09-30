@@ -1,1 +1,1 @@
-from . import model_zoo, models, regularizers
+from . import model_zoo, models, regularizers, augmentations

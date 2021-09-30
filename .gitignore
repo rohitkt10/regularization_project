@@ -1,5 +1,4 @@
 *.DS_Store
-*.ipynb
 *.h5
 *.tfrecords
 *.npy

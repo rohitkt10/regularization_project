@@ -1,2 +1,2 @@
 # Regularization Poject
-Studying the effect of regularization on model interpretability
+Studying the effect of regularization on model interpretability.

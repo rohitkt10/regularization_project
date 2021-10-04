@@ -3,7 +3,7 @@ Task 1 - Comparing the classification performance and interpretability of
 shallow and deep CNN models under various regularization settings.
 -------------------------------------------------------------------
 
-Subtask 1.4 - Batch norm + l2 regularization ; no dropout
+Subtask 1.5.2 - Dropout ; no batch norm
 
 In this subtask we train the shallow and deep CNN with batch normalization
 dropout. The test is conducted for 3 versions of the shallow and deep
@@ -28,7 +28,8 @@ from tensorflow.keras.callbacks import ModelCheckpoint
 def main():
     # get keyboard arguments ; defined in the file train_model_utils.py
     args = get_keyboard_arguments()
-    assert args.l2 > 0., 'This experiment requires a nonzero l2 regularization.'
+    #assert args.l2 > 0., 'This experiment requires a nonzero l2 regularization.'
+    assert args.dropout1 > 0., 'This experiment requires a nonzero dropout.'
 
     # get data
     traindata, validdata, testdata, model_test = _get_synthetic_data(SYNTHETIC_DATADIR)
@@ -36,7 +37,7 @@ def main():
     validdata = tf.data.Dataset.from_tensor_slices(validdata)
 
     # set up the checkpoint directory
-    RESULTSDIR = os.path.join(BASERESULTSDIR, 'task_1_sub_4', "l2="+format(args.l2, ".0e"))
+    RESULTSDIR = os.path.join(BASERESULTSDIR, 'task_1_sub_5_2', f"dropout={args.dropout1}")
     CKPTDIR = os.path.join(
                         RESULTSDIR,
                         f"{args.type.lower()}_{args.factor}",
@@ -50,10 +51,10 @@ def main():
         model = get_model(
                     input_shape=(200,4),
                     num_outputs=1,
-                    bn=True,
-                    dropout1=None,
-                    dropout2=None,
-                    kernel_regularizer=tfk.regularizers.l2(args.l2),
+                    bn=False,
+                    dropout1=args.dropout1,
+                    dropout2=0.5,
+                    kernel_regularizer=None,
                     activation=args.activation,
                     name="model",
                     factor=args.factor,

@@ -114,7 +114,7 @@ def main():
                                             track_sg=args.track_sg,
                                             track_intgrad=args.track_intgrad,
                                                 )
-        callbacks = callbacks + [ckpt_callback, interp_callback]
+        callbacks = callbacks + [csvlogger, ckpt_callback, interp_callback]
 
         # fit the model
         model.fit(

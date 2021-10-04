@@ -33,6 +33,9 @@ def _validate_args(args):
     assert isinstance(args.track_sg, bool)
     assert isinstance(args.track_intgrad, bool)
     assert isinstance(args.activation, str)
+    assert isinstance(args.l2, float) and args.l2 >= 0.
+    assert isinstance(args.l1, float) and args.l2 >= 0.
+    assert isinstance(args.sn, float) and args.l2 >= 0.
 
 def get_keyboard_arguments():
     parser = argparse.ArgumentParser()
@@ -56,6 +59,10 @@ def get_keyboard_arguments():
     parser.add_argument("--track_intgrad", action='store_true',
                         help='Whether to track integrated gradients during training',)
     parser.add_argument("--activation", default='relu', help='First layer activation.', type=str)
+    parser.add_argument("--l2", default=0., help='Strength of l2 regularization.', type=float)
+    parser.add_argument("--l1", default=0., help='Strength of l1 regularization.', type=float)
+    parser.add_argument("--sn", default=0., help='Strength of spectral norm regularization.', type=float)
+
 
     args = parser.parse_args()
     _validate_args(args)

@@ -115,8 +115,9 @@ class JacobianRegularizedModel(_Model):
 
 class AugmentedModel(_Model):
     def _check_augmentation_validity(augmentations):
-        res = [isinstance(augmentation, Augmentation) for augmentation in augmentations]
-        assert np.all(res)
+        #res = [isinstance(augmentation, Augmentation) for augmentation in augmentations]
+        #assert np.all(res)
+        assert all(isinstance(aug, Augmentation) for aug in augmentations)
 
     def __init__(self, model, augmentations, subsample=None, name="augmented_model"):
         """

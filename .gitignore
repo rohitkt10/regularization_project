@@ -19,4 +19,4 @@
 **/.ipynb_checkpoints
 ./src/*.ipynb
 ./src/*/*.ipynb
-./notebooks/test.ipynb
+test.ipynb

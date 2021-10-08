@@ -20,3 +20,7 @@
 ./src/*.ipynb
 ./src/*/*.ipynb
 test.ipynb
+./notebooks/*.h5
+./notebooks/*.csv
+*.pdf
+test_plots.ipynb

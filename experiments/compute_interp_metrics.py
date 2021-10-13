@@ -90,49 +90,51 @@ def save_interpretability_results(taskdir):
         attrdir = os.path.join(trialdir, 'attribution_scores') ## where attribution scores are stored
 
         # get the best checkpoint ; compute interp. metrics (ROC, PR, SNR)
-        print("-----------------------------------------------")
-        print("Calculating best model interpretability performance ...")
-        checkpoints = [os.path.join(trialdir, f) for f in os.listdir(trialdir) if 'ckpt' in f]
-        checkpoints.sort(key=lambda x : os.path.getmtime(x))
-        best_ckpt = checkpoints[-1]
-        model = tfk.models.load_model(best_ckpt)
-        metrics = interp_metrics(
-                            model=model,
-                            X=X,
-                            X_model=X_model,
-                                )
-        res = h5py.File(
-                os.path.join(trialdir, 'best_model_interp_scores.h5'), 'w'
-                 )
-        for group, group_dict in metrics.items():
-            res.create_group(group)
-            for name, data in group_dict.items():
-                res[group].create_dataset(name=name, data=data, compression='gzip')
-        res.close()
+        if not os.path.exists(os.path.join(trialdir, 'best_model_interp_scores.h5')):
+            print("-----------------------------------------------")
+            print("Calculating best model interpretability performance ...")
+            checkpoints = [os.path.join(trialdir, f) for f in os.listdir(trialdir) if 'ckpt' in f]
+            checkpoints.sort(key=lambda x : os.path.getmtime(x))
+            best_ckpt = checkpoints[-1]
+            model = tfk.models.load_model(best_ckpt)
+            metrics = interp_metrics(
+                                model=model,
+                                X=X,
+                                X_model=X_model,
+                                    )
+            res = h5py.File(
+                    os.path.join(trialdir, 'best_model_interp_scores.h5'), 'w'
+                     )
+            for group, group_dict in metrics.items():
+                res.create_group(group)
+                for name, data in group_dict.items():
+                    res[group].create_dataset(name=name, data=data, compression='gzip')
+            res.close()
 
         ## get all the attribution scores h5 filepaths
-        attrscoresfiles = [os.path.join(attrdir, f) for f in np.sort(os.listdir(attrdir)) if 'epoch' in f]
+        if not os.path.exists(os.path.join(trialdir, 'all_epochs_interp_scores.h5')):
+            attrscoresfiles = [os.path.join(attrdir, f) for f in np.sort(os.listdir(attrdir)) if 'epoch' in f]
 
-        # compute the interp metrics on all trainign epochs
-        print("------------------------------------")
-        print("Calculating model interpretability at every training epoch ...")
-        metrics = {}
-        for i, scores_file in enumerate(attrscoresfiles):
-            print(f"Currently on epoch : {i}")
-            metrics[i] = interp_metrics(model, X, X_model, scores_file=scores_file)
-        print("------------------------------------")
+            # compute the interp metrics on all trainign epochs
+            print("------------------------------------")
+            print("Calculating model interpretability at every training epoch ...")
+            metrics = {}
+            for i, scores_file in enumerate(attrscoresfiles):
+                print(f"Currently on epoch : {i}")
+                metrics[i] = interp_metrics(model, X, X_model, scores_file=scores_file)
+            print("------------------------------------")
 
-        # save results
-        res = h5py.File(
-                os.path.join(trialdir, 'all_epochs_interp_scores.h5'), 'w'
-                    )
-        for epoch, epoch_metrics in metrics.items():
-            res.create_group(str(epoch))
-            for group, group_dict in epoch_metrics.items():
-                res[str(epoch)].create_group(group)
-                for name, data in group_dict.items():
-                    res[str(epoch)][group].create_dataset(name=name, data=data, compression='gzip')
-        res.close()
+            # save results
+            res = h5py.File(
+                    os.path.join(trialdir, 'all_epochs_interp_scores.h5'), 'w'
+                        )
+            for epoch, epoch_metrics in metrics.items():
+                res.create_group(str(epoch))
+                for group, group_dict in epoch_metrics.items():
+                    res[str(epoch)].create_group(group)
+                    for name, data in group_dict.items():
+                        res[str(epoch)][group].create_dataset(name=name, data=data, compression='gzip')
+            res.close()
 
 def main():
     parser = argparse.ArgumentParser()

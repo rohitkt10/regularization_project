@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 from tensorflow import keras as tfk
 from .augmentations import Augmentation
@@ -159,3 +160,53 @@ class AugmentedModel(_Model):
     def train_step(self, data):
         data = self._get_augmented_dataset(data)
         return super().train_step(data)
+
+class ManifoldMixupModel(_Model):
+    def __init__(self, model, ks, alpha=1.,name="mixup_model"):
+        """
+        ks -> List of layer activation indices to use for manifold mixup.
+        """
+        super().__init__(name=name)
+        self.model = model
+        self.lam_dist = tfd.Beta(alpha, alpha)
+        self.ks = ks
+    
+    def call(self, *args, **kwargs):
+        return self.model.call(*args, **kwargs)
+
+    def train_step(self, data):
+        x, y = data
+        k = np.random.randint(0, len(self.ks)) ## pick a random layer index
+        lam = self.lam_dist.sample()
+        idxs = tf.random.shuffle(tf.range(tf.shape(x)[0])) # shuffled indices 
+        xp, yp = tf.gather(x, idxs, axis=0), tf.gather(y, idxs, axis=0) ## shuffled batch
+        ym = lam*y + (1-lam)*yp ## mixup the labels
+
+        # record differentiable ops
+        with tf.GradientTape() as tape:
+            y_pred, ym_pred = x, xp
+            for i, layer in enumerate(self.model.layers):
+                y_pred = layer(y_pred, training=True)
+                ym_pred = layer(ym_pred, training=True)
+                if i == k:
+                    ym_pred = lam*y_pred + (1-lam)*ym_pred # mixup the representation at the kth layer
+            
+            # stack the original minibatch with the augmented data 
+            y = tf.concat([y, ym], axis=0)
+            y_pred = tf.concat([y_pred, ym_pred], axis=0)
+            
+            # calcalate total loss 
+            loss = self.compiled_loss(y, y_pred, regularization_losses=self.losses)
+
+        # Compute gradients
+        trainable_vars = self.model.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+
+        # take optimization step 
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        # update metrics
+        self.compiled_metrics.update_state(y, y_pred)
+
+        # return dictionary of metrics 
+        return {m.name: m.result() for m in self.metrics}

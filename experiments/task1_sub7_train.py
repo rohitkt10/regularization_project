@@ -3,7 +3,7 @@ Task 1 - Comparing the classification performance and interpretability of
 shallow and deep CNN models under various regularization settings.
 -------------------------------------------------------------------
 
-Subtask 1.6 - Dropout + l2 + batch norm
+Subtask 1.7 - Dropout + l2 + batch norm
 
 In this subtask we train the shallow and deep CNN with batch normalization
 dropout. The test is conducted for 3 versions of the shallow and deep

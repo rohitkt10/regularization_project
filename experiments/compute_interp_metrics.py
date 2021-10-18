@@ -1,5 +1,5 @@
 import numpy as np, os, h5py, pandas as pd, sys, argparse
-from multiprocessing import Pool
+from multiprocessing import Pool, Process
 from glob import glob
 from train_model_utils import SYNTHETIC_DATADIR
 from pdb import set_trace as keyboard
@@ -57,7 +57,7 @@ def interp_metrics(model, X, X_model, scores_file=None):
     return res
 
 # interpretability performance
-def save_interpretability_results(taskdir):
+def save_interpretability_results(taskdir, modeltype, factor,):
     """
     Parse all available trial directories in the task directory.
 
@@ -79,10 +79,15 @@ def save_interpretability_results(taskdir):
     X_model = model_test[pos_index[:num_analyze]]
 
     # get the log files
-    logfiles = glob(os.path.join(taskdir, "**", "log.csv"), recursive=True)
+    logfiles = glob(
+                os.path.join(taskdir, "**",f"{modeltype}_{factor}", "**", "log.csv"), 
+                recursive=True
+                )
     trialdirs = [f.split("log.csv")[0] for f in logfiles]
 
-    #keyboard()
+    # compute and save interpretability metrics for all available trial directories
+    # pool  = Pool(20)
+    # res = pool.map(_single_trial_metrics, trialdirs, args=(X, X_model))
 
     ## loop over all trials
     for trialdir in trialdirs:
@@ -141,12 +146,11 @@ def main():
     parser.add_argument("--task", type=int, default=1)
     parser.add_argument("--subtask", type=int, default=1)
     parser.add_argument("--subsubtask", type=int, default=0)
-    # parser.add_argument("--type", type=str, default='deep')
-    # parser.add_argument("--factor", type=int, default=1)
-    # parser.add_argument("--trial", type=int, default=1)
+    parser.add_argument("--type", type=str, default='deep')
+    parser.add_argument("--factor", type=int, default=1)
     args = parser.parse_args()
-    #assert args.type in ['deep', 'shallow']
-    #assert args.factor in [1, 4, 8]
+    assert args.type in ['deep', 'shallow']
+    assert args.factor in [1, 4, 8]
 
     # set up the directory for the requested task and subtask
     if not args.subsubtask:
@@ -156,7 +160,7 @@ def main():
     #taskdir = os.path.join(taskdir, f"{args.type}_{args.factor}", f"trial_{trial:02d})
 
     # save interpretability results for all trial directories in this task directory
-    save_interpretability_results(taskdir)
+    save_interpretability_results(taskdir, args.type, args.factor,)
 
 
 if __name__ == '__main__':

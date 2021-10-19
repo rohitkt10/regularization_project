@@ -36,6 +36,7 @@ def _validate_args(args):
     assert isinstance(args.l2, float) and args.l2 >= 0.
     assert isinstance(args.l1, float) and args.l2 >= 0.
     assert isinstance(args.sn, float) and args.l2 >= 0.
+    assert args.alpha > 0. and isinstance(args.alpha, float)
 
 def get_keyboard_arguments():
     parser = argparse.ArgumentParser()
@@ -44,8 +45,9 @@ def get_keyboard_arguments():
     parser.add_argument("--factor", default=1, help='Expansion factor', type=int)
     parser.add_argument("--type", default='deep', help='Deep or shallow model', type=str)
     parser.add_argument("--start_trial", default=1, help='Index of 1st trial', type=int)
-    parser.add_argument("--end_trial", default=10, help="Index of final trial", type=int)
+    parser.add_argument("--end_trial", default=5, help="Index of final trial", type=int)
     parser.add_argument("--bn", action="store_true", help="Whether to use batch norm",)
+    parser.add_argument("--nobn", action="store_true", help="Whether NOT to use batch norm",)
     parser.add_argument("--dropout1", default=0.2, help='Dropout applied to conv layers', type=float)
     parser.add_argument("--dropout2", default=0.5, help="Dropout applied to dense layers", type=float)
     parser.add_argument("--es", action='store_true', help='Whether to add Early Stopping callback',)
@@ -62,7 +64,9 @@ def get_keyboard_arguments():
     parser.add_argument("--l2", default=0., help='Strength of l2 regularization.', type=float)
     parser.add_argument("--l1", default=0., help='Strength of l1 regularization.', type=float)
     parser.add_argument("--sn", default=0., help='Strength of spectral norm regularization.', type=float)
-
+    parser.add_argument("--alpha", default=0.1, 
+                        help='Mixup beta distribution concentration parameter.', 
+                        type=float)
 
     args = parser.parse_args()
     _validate_args(args)

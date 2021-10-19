@@ -19,6 +19,10 @@ class _Model(tfk.Model):
     @model.setter
     def model(self, m):
         self._model = m
+    
+    def compile(self, *args, **kwargs):
+        self.model.compile(*args, **kwargs)
+        super().compile(*args, **kwargs)
 
     def save(self, *args, **kwargs):
         return self.model.save(*args, **kwargs)
@@ -116,7 +120,7 @@ class JacobianRegularizedModel(_Model):
         return res
 
 class AugmentedModel(_Model):
-    def _check_augmentation_validity(augmentations):
+    def _check_augmentation_validity(self, augmentations):
         #res = [isinstance(augmentation, Augmentation) for augmentation in augmentations]
         #assert np.all(res)
         assert all(isinstance(aug, Augmentation) for aug in augmentations)

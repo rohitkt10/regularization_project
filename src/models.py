@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras as tfk
+from tensorflow_probability import distributions as tfd
 from .augmentations import Augmentation
 
 class _Model(tfk.Model):
@@ -162,22 +163,28 @@ class AugmentedModel(_Model):
         return super().train_step(data)
 
 class ManifoldMixupModel(_Model):
-    def __init__(self, model, ks, alpha=1.,name="mixup_model"):
+    """
+    Manifold mixup is a generalization of the input mixup regularization scheme where 
+    intermediate layer representations are mixed up rather than just the input layer
+    """
+    def __init__(self, model, ks, alpha=1., name="mixup_model"):
         """
         ks -> List of layer activation indices to use for manifold mixup.
         """
-        super().__init__(name=name)
-        self.model = model
+        super().__init__(model=model, name=name)
         self.lam_dist = tfd.Beta(alpha, alpha)
         self.ks = ks
     
-    def call(self, *args, **kwargs):
-        return self.model.call(*args, **kwargs)
+    def fit(self, *args, **kwargs):
+        if not self.run_eagerly:
+            print("WARNING: This model can only be run in eager mode.Switching run_eagerly property...")
+            self.run_eagerly = False
+        return super().fit(*args, **kwargs)
 
     def train_step(self, data):
         x, y = data
         k = np.random.randint(0, len(self.ks)) ## pick a random layer index
-        lam = self.lam_dist.sample()
+        lam = self.lam_dist.sample()  # sample a mixing coefficient 
         idxs = tf.random.shuffle(tf.range(tf.shape(x)[0])) # shuffled indices 
         xp, yp = tf.gather(x, idxs, axis=0), tf.gather(y, idxs, axis=0) ## shuffled batch
         ym = lam*y + (1-lam)*yp ## mixup the labels
@@ -191,22 +198,16 @@ class ManifoldMixupModel(_Model):
                 if i == k:
                     ym_pred = lam*y_pred + (1-lam)*ym_pred # mixup the representation at the kth layer
             
-            # stack the original minibatch with the augmented data 
-            y = tf.concat([y, ym], axis=0)
-            y_pred = tf.concat([y_pred, ym_pred], axis=0)
-            
-            # calcalate total loss 
-            loss = self.compiled_loss(y, y_pred, regularization_losses=self.losses)
+            # stack the original minibatch to create augmented minibatch and calculate loss
+            y_aug = tf.concat([y, ym], axis=0)
+            y_pred_aug = tf.concat([y_pred, ym_pred], axis=0)
+            loss = self.compiled_loss(y_aug, y_pred_aug, regularization_losses=self.losses)
 
-        # Compute gradients
+        # Compute gradients and take optimization step
         trainable_vars = self.model.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
-
-        # take optimization step 
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
-        # update metrics
+        # finish up
         self.compiled_metrics.update_state(y, y_pred)
-
-        # return dictionary of metrics 
         return {m.name: m.result() for m in self.metrics}

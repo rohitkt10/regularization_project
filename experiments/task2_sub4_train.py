@@ -3,7 +3,7 @@ Task 2 - Comparing the classification performance and interpretability of
 shallow and deep CNN models under various regularization settings.
 -------------------------------------------------------------------
 
-Subtask 2.2 - dropout + no l2 regularization + manifold gaussian noise ; batch norm as input
+Subtask 2.4 - dropout + no l2 regularization + manifold gaussian noise ; batch norm as input
 and mixup parameter as input
 
 In this subtask we train the shallow and deep CNN with batch normalization
@@ -38,7 +38,7 @@ def main():
 
     # set up the checkpoint directory
     BN = 'bn' if args.bn else 'no_bn'
-    RESULTSDIR = os.path.join(BASERESULTSDIR, TASKDIR,f"{BN}",f"alpha={args.alpha}",)
+    RESULTSDIR = os.path.join(BASERESULTSDIR, TASKDIR,f"{BN}",f"stddev={args.stddev}",)
     CKPTDIR = os.path.join(
                         RESULTSDIR,
                         f"{args.type.lower()}_{args.factor}",

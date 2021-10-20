@@ -39,7 +39,7 @@ def main():
 
     # set up the checkpoint directory
     BN = 'bn' if args.bn else 'no_bn'
-    RESULTSDIR = os.path.join(BASERESULTSDIR, TASKDIR,f"{BN}",f"alpha={args.alpha}",)
+    RESULTSDIR = os.path.join(BASERESULTSDIR, TASKDIR,f"{BN}",f"stddev={args.stddev}",)
     CKPTDIR = os.path.join(
                         RESULTSDIR,
                         f"{args.type.lower()}_{args.factor}",

@@ -37,6 +37,7 @@ def _validate_args(args):
     assert isinstance(args.l1, float) and args.l2 >= 0.
     assert isinstance(args.sn, float) and args.l2 >= 0.
     assert args.alpha > 0. and isinstance(args.alpha, float)
+    assert isinstance(args.stddev, float) and args.stddev >= 0.
 
 def get_keyboard_arguments():
     parser = argparse.ArgumentParser()
@@ -66,6 +67,9 @@ def get_keyboard_arguments():
     parser.add_argument("--sn", default=0., help='Strength of spectral norm regularization.', type=float)
     parser.add_argument("--alpha", default=0.1, 
                         help='Mixup beta distribution concentration parameter.', 
+                        type=float)
+    parser.add_argument("--stddev", default=0.1, 
+                        help='Gaussian noise standard deviation.', 
                         type=float)
 
     args = parser.parse_args()

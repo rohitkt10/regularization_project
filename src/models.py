@@ -53,7 +53,6 @@ class _Model(tfk.Model):
         res = {m.name:m.result() for m in self.metrics}
         return res
 
-
 class JacobianRegularizedModel(_Model):
     """
     Regularize the model by adding the squared Frobenius norm
@@ -201,6 +200,53 @@ class ManifoldMixupModel(_Model):
                 ym_pred = layer(ym_pred, training=True)
                 if i == k:
                     ym_pred = lam*y_pred + (1-lam)*ym_pred # mixup the representation at the kth layer
+            
+            # stack the original minibatch to create augmented minibatch and calculate loss
+            y_aug = tf.concat([y, ym], axis=0)
+            y_pred_aug = tf.concat([y_pred, ym_pred], axis=0)
+            loss = self.compiled_loss(y_aug, y_pred_aug, regularization_losses=self.losses)
+
+        # Compute gradients and take optimization step
+        trainable_vars = self.model.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        # finish up
+        self.compiled_metrics.update_state(y, y_pred)
+        return {m.name: m.result() for m in self.metrics}
+
+class ManifoldGaussianNoiseModel(_Model):
+    """
+    Manifold Gaussian noise is a generalization of the input gaussian noise regularization scheme where 
+    intermediate layer representations are mixed up rather than just the input layer
+    """
+    def __init__(self, model, ks, stddev=0.1, name="mixup_model"):
+        """
+        ks -> List of layer activation indices to use for manifold mixup.
+        """
+        super().__init__(model=model, name=name)
+        self.noise_dist = tfd.Normal(loc=0., scale=stddev)
+        self.ks = ks
+    
+    def fit(self, *args, **kwargs):
+        if not self.run_eagerly:
+            print("WARNING: This model can only be run in eager mode.Switching run_eagerly property...")
+            self.run_eagerly = False
+        return super().fit(*args, **kwargs)
+
+    def train_step(self, data):
+        x, y = data
+        k = np.random.randint(0, len(self.ks)) ## pick a random layer index
+        ym = y ## augmented data labels 
+
+        # record differentiable ops
+        with tf.GradientTape() as tape:
+            y_pred, ym_pred = x, x
+            for i, layer in enumerate(self.model.layers):
+                y_pred = layer(y_pred, training=True)
+                ym_pred = layer(ym_pred, training=True)
+                if i == k:
+                    ym_pred = ym_pred + self.noise_dist.sample(tf.shape(ym_pred)) # add noise to the representation at the kth layer
             
             # stack the original minibatch to create augmented minibatch and calculate loss
             y_aug = tf.concat([y, ym], axis=0)

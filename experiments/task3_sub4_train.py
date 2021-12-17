@@ -1,36 +1,35 @@
 """
-Task 2 - Comparing the classification performance and interpretability of
+Task 3 - Comparing the classification performance and interpretability of
 shallow and deep CNN models under various regularization settings.
 -------------------------------------------------------------------
 
-Subtask 2.1 - dropout + no l2 regularization + input mixup ; batch norm as input
-and mixup parameter as input
+Subtask 3.4 - dropout + no l2 regularization + manifold gaussian noise no batch norm with learning rate trick
 
 In this subtask we train the shallow and deep CNN with batch normalization
 dropout. The test is conducted for 3 versions of the shallow and deep
 CNNs each - scaling each of these types of models by a factor of 1, 4 and 8.
 """
+
 import numpy as np, os, sys, h5py, pandas as pd, argparse
 from pdb import set_trace as keyboard
 
 sys.path.append("..")
-from src.callbacks import ModelInterpretabilityCallback
+from src.callbacks import ModelInterpretabilityCallback, LRCallback
 from src.model_zoo import deep_cnn, shallow_cnn
 from src.utils import _get_synthetic_data
-from src.models import AugmentedModel
-from src.augmentations import MixupAugmentation
+from src.models import ManifoldGaussianNoiseModel
 from train_model_utils import get_keyboard_arguments
 from train_model_utils import (models, BASERESULTSDIR, SYNTHETIC_DATADIR)
 
 import tensorflow as tf
 from tensorflow import keras as tfk
 from tensorflow.keras.callbacks import ModelCheckpoint
-TASKDIR = "task_2_sub_1"
+TASKDIR = "task_3_sub_4"
 
 def main():
     # get keyboard arguments ; defined in the file train_model_utils.py
     args = get_keyboard_arguments()
-    assert args.alpha > 0., "This experiment requires a positive mixup parameter."
+    assert args.stddev > 0., "This experiment requires a positive gaussian noise std. dev."
 
     # get data
     traindata, validdata, testdata, model_test = _get_synthetic_data(SYNTHETIC_DATADIR)
@@ -39,15 +38,15 @@ def main():
 
     # set up the checkpoint directory
     BN = 'bn' if args.bn else 'no_bn'
-    RESULTSDIR = os.path.join(BASERESULTSDIR, TASKDIR,f"{BN}",f"alpha={args.alpha}",)
+    RESULTSDIR = os.path.join(BASERESULTSDIR, TASKDIR,f"{BN}",f"stddev={args.stddev}",)
     CKPTDIR = os.path.join(
                         RESULTSDIR,
                         f"{args.type.lower()}_{args.factor}",
                          )
-
+    CKPTDIR = os.path.join(CKPTDIR, f"lr_wait={args.lr_wait}")
+    
     # do 10 trials
     for trial in range(args.start_trial, args.end_trial+1):
-
         # instantiate model
         get_model = models[args.type.lower()].get_model
         model = get_model(
@@ -62,9 +61,13 @@ def main():
                     factor=args.factor,
                     logits_only=False,
                         )
-        augmentation = MixupAugmentation(alpha=args.alpha)
-        model = AugmentedModel(model=model, augmentations=[augmentation])
-
+        ks = [0]
+        for i, layer in enumerate(model.layers):
+            if 'activation' in layer.name:
+                if layer.activation.__name__ != 'linear' and layer.activation.__name__ != 'sigmoid':
+                    ks.append(i)
+        model = ManifoldGaussianNoiseModel(model=model, ks=ks, stddev=args.stddev)
+        
         # set up compile options and compile the model
         acc = tfk.metrics.BinaryAccuracy(name='acc')
         auroc = tfk.metrics.AUC(curve='ROC', name='auroc')
@@ -117,7 +120,8 @@ def main():
                                             track_sg=args.track_sg,
                                             track_intgrad=args.track_intgrad,
                                                 )
-        callbacks = callbacks + [csvlogger, ckpt_callback, interp_callback]
+        lr_trick_callback = LRCallback(wait=args.lr_wait)
+        callbacks = callbacks + [csvlogger, ckpt_callback, interp_callback, lr_trick_callback]
 
         # fit the model
         model.fit(
@@ -129,3 +133,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+        

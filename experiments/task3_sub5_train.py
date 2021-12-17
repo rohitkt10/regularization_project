@@ -1,36 +1,35 @@
 """
-Task 2 - Comparing the classification performance and interpretability of
+Task 3 - Comparing the classification performance and interpretability of
 shallow and deep CNN models under various regularization settings.
 -------------------------------------------------------------------
 
-Subtask 2.1 - dropout + no l2 regularization + input mixup ; batch norm as input
-and mixup parameter as input
+Subtask 3.5 - dropout + no l2 regularization + SN reg no batch norm with learning rate trick
 
 In this subtask we train the shallow and deep CNN with batch normalization
 dropout. The test is conducted for 3 versions of the shallow and deep
 CNNs each - scaling each of these types of models by a factor of 1, 4 and 8.
 """
+
 import numpy as np, os, sys, h5py, pandas as pd, argparse
 from pdb import set_trace as keyboard
 
 sys.path.append("..")
-from src.callbacks import ModelInterpretabilityCallback
+from src.callbacks import ModelInterpretabilityCallback, LRCallback
 from src.model_zoo import deep_cnn, shallow_cnn
 from src.utils import _get_synthetic_data
-from src.models import AugmentedModel
-from src.augmentations import MixupAugmentation
+from src.regularizers import SpectralNormRegularizer
 from train_model_utils import get_keyboard_arguments
 from train_model_utils import (models, BASERESULTSDIR, SYNTHETIC_DATADIR)
 
 import tensorflow as tf
 from tensorflow import keras as tfk
 from tensorflow.keras.callbacks import ModelCheckpoint
-TASKDIR = "task_2_sub_1"
+TASKDIR = "task_3_sub_5"
 
 def main():
     # get keyboard arguments ; defined in the file train_model_utils.py
     args = get_keyboard_arguments()
-    assert args.alpha > 0., "This experiment requires a positive mixup parameter."
+    assert args.sn > 0., "This experiment requires a positive spectral norm reg. parameter."
 
     # get data
     traindata, validdata, testdata, model_test = _get_synthetic_data(SYNTHETIC_DATADIR)
@@ -39,12 +38,13 @@ def main():
 
     # set up the checkpoint directory
     BN = 'bn' if args.bn else 'no_bn'
-    RESULTSDIR = os.path.join(BASERESULTSDIR, TASKDIR,f"{BN}",f"alpha={args.alpha}",)
+    RESULTSDIR = os.path.join(BASERESULTSDIR, TASKDIR,f"{BN}","sn="+format(args.sn, ".0e"),)
     CKPTDIR = os.path.join(
                         RESULTSDIR,
                         f"{args.type.lower()}_{args.factor}",
                          )
-
+    CKPTDIR = os.path.join(CKPTDIR, f"lr_wait={args.lr_wait}")
+    
     # do 10 trials
     for trial in range(args.start_trial, args.end_trial+1):
 
@@ -56,14 +56,12 @@ def main():
                     bn=args.bn,
                     dropout1=0.1,
                     dropout2=0.5,
-                    kernel_regularizer=None,
+                    kernel_regularizer=SpectralNormRegularizer(args.sn, 20),
                     activation=args.activation,
                     name="model",
                     factor=args.factor,
                     logits_only=False,
                         )
-        augmentation = MixupAugmentation(alpha=args.alpha)
-        model = AugmentedModel(model=model, augmentations=[augmentation])
 
         # set up compile options and compile the model
         acc = tfk.metrics.BinaryAccuracy(name='acc')
@@ -117,7 +115,8 @@ def main():
                                             track_sg=args.track_sg,
                                             track_intgrad=args.track_intgrad,
                                                 )
-        callbacks = callbacks + [csvlogger, ckpt_callback, interp_callback]
+        lr_trick_callback = LRCallback(wait=args.lr_wait)
+        callbacks = callbacks + [csvlogger, ckpt_callback, interp_callback, lr_trick_callback]
 
         # fit the model
         model.fit(

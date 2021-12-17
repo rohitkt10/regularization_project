@@ -36,6 +36,7 @@ def _validate_args(args):
     assert isinstance(args.l2, float) and args.l2 >= 0.
     assert isinstance(args.l1, float) and args.l2 >= 0.
     assert isinstance(args.sn, float) and args.l2 >= 0.
+    assert isinstance(args.lr_wait, int) and args.lr_wait > 0
     assert args.alpha > 0. and isinstance(args.alpha, float)
     assert isinstance(args.stddev, float) and args.stddev >= 0.
 
@@ -71,6 +72,9 @@ def get_keyboard_arguments():
     parser.add_argument("--stddev", default=0.1, 
                         help='Gaussian noise standard deviation.', 
                         type=float)
+    parser.add_argument("--lr_wait", default=10, 
+                        help='Number of epochs to wait until learning rate is increased.', 
+                        type=int)
 
     args = parser.parse_args()
     _validate_args(args)

@@ -123,3 +123,14 @@ class ModelInterpretabilityCallback(tfkc.Callback):
             scores = self._get_attribution_scores()
             filepath = os.path.join(self.savedir, f"epoch_{epoch:03d}.h5")
             self._save_data(scores, filepath)
+
+class LRCallback(tfk.callbacks.Callback):
+    def __init__(self, wait=5, factor=10.):
+        self.wait = wait 
+        self.factor = factor
+    
+    def on_epoch_end(self, epoch, logs=None):
+        old_lr = tfk.backend.get_value(self.model.optimizer.lr)
+        if self.wait-1 == epoch:
+            tfk.backend.set_value(self.model.optimizer.lr, old_lr*self.factor)
+            print(f"Learning rate increased to {tfk.backend.get_value(self.model.optimizer.lr)}")

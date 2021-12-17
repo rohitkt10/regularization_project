@@ -3,7 +3,7 @@ Task 2 - Comparing the classification performance and interpretability of
 shallow and deep CNN models under various regularization settings.
 -------------------------------------------------------------------
 
-Subtask 2.1 - dropout + no l2 regularization + input mixup ; batch norm as input
+Subtask 2.1 - dropout + no l2 regularization + Spectral norm regularizer ; batch norm as input
 and mixup parameter as input
 
 In this subtask we train the shallow and deep CNN with batch normalization
@@ -17,20 +17,19 @@ sys.path.append("..")
 from src.callbacks import ModelInterpretabilityCallback
 from src.model_zoo import deep_cnn, shallow_cnn
 from src.utils import _get_synthetic_data
-from src.models import AugmentedModel
-from src.augmentations import MixupAugmentation
+from src.regularizers import SpectralNormRegularizer
 from train_model_utils import get_keyboard_arguments
 from train_model_utils import (models, BASERESULTSDIR, SYNTHETIC_DATADIR)
 
 import tensorflow as tf
 from tensorflow import keras as tfk
 from tensorflow.keras.callbacks import ModelCheckpoint
-TASKDIR = "task_2_sub_1"
+TASKDIR = "task_2_sub_5"
 
 def main():
     # get keyboard arguments ; defined in the file train_model_utils.py
     args = get_keyboard_arguments()
-    assert args.alpha > 0., "This experiment requires a positive mixup parameter."
+    assert args.sn > 0., "This experiment requires a positive spectral norm reg. parameter."
 
     # get data
     traindata, validdata, testdata, model_test = _get_synthetic_data(SYNTHETIC_DATADIR)
@@ -39,7 +38,7 @@ def main():
 
     # set up the checkpoint directory
     BN = 'bn' if args.bn else 'no_bn'
-    RESULTSDIR = os.path.join(BASERESULTSDIR, TASKDIR,f"{BN}",f"alpha={args.alpha}",)
+    RESULTSDIR = os.path.join(BASERESULTSDIR, TASKDIR,f"{BN}","sn="+format(args.sn, ".0e"),)
     CKPTDIR = os.path.join(
                         RESULTSDIR,
                         f"{args.type.lower()}_{args.factor}",
@@ -56,14 +55,12 @@ def main():
                     bn=args.bn,
                     dropout1=0.1,
                     dropout2=0.5,
-                    kernel_regularizer=None,
+                    kernel_regularizer=SpectralNormRegularizer(args.sn, 20),
                     activation=args.activation,
                     name="model",
                     factor=args.factor,
                     logits_only=False,
                         )
-        augmentation = MixupAugmentation(alpha=args.alpha)
-        model = AugmentedModel(model=model, augmentations=[augmentation])
 
         # set up compile options and compile the model
         acc = tfk.metrics.BinaryAccuracy(name='acc')

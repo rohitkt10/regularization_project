@@ -3,7 +3,7 @@ Task 4 - Comparing the classification performance and interpretability of
 shallow and deep CNN models under various regularization settings.
 -------------------------------------------------------------------
 
-Subtask 4.1 - Table 2 input mixup training results
+Subtask 4.5 - Table 1 manifold gaussian noise training results
 
 In this subtask we train the shallow and deep CNN with batch normalization
 dropout. The test is conducted for 3 versions of the shallow and deep
@@ -17,15 +17,14 @@ sys.path.append("..")
 from src.callbacks import ModelInterpretabilityCallback, LRCallback
 from src.model_zoo import deep_cnn, shallow_cnn
 from src.utils import _get_synthetic_data
-from src.models import AugmentedModel
-from src.augmentations import MixupAugmentation
+from src.models import ManifoldGaussianNoiseModel
 from train_model_utils import get_keyboard_arguments
 from train_model_utils import (models, BASERESULTSDIR, SYNTHETIC_DATADIR)
 
 import tensorflow as tf
 from tensorflow import keras as tfk
 from tensorflow.keras.callbacks import ModelCheckpoint
-TASKDIR = "task_4_sub_2"
+TASKDIR = "task_4_sub_5"
 
 def main():
     # get keyboard arguments ; defined in the file train_model_utils.py
@@ -62,8 +61,12 @@ def main():
                     factor=args.factor,
                     logits_only=False,
                         )
-        augmentation = MixupAugmentation(alpha=0.2)
-        model = AugmentedModel(model=model, augmentations=[augmentation])
+        ks = [0]
+        for i, layer in enumerate(model.layers):
+            if 'activation' in layer.name:
+                if layer.activation.__name__ != 'linear' and layer.activation.__name__ != 'sigmoid':
+                    ks.append(i)
+        model = ManifoldGaussianNoiseModel(model=model, ks=ks, stddev=0.15)
     
         # set up compile options and compile the model
         acc = tfk.metrics.BinaryAccuracy(name='acc')
@@ -129,5 +132,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-        
-        

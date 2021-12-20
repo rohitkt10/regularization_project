@@ -3,7 +3,7 @@ Task 4 - Comparing the classification performance and interpretability of
 shallow and deep CNN models under various regularization settings.
 -------------------------------------------------------------------
 
-Subtask 4.1 - Table 2 input mixup training results
+Subtask 4.6 - Table 1 Spectral Norm regularization training results
 
 In this subtask we train the shallow and deep CNN with batch normalization
 dropout. The test is conducted for 3 versions of the shallow and deep
@@ -17,15 +17,14 @@ sys.path.append("..")
 from src.callbacks import ModelInterpretabilityCallback, LRCallback
 from src.model_zoo import deep_cnn, shallow_cnn
 from src.utils import _get_synthetic_data
-from src.models import AugmentedModel
-from src.augmentations import MixupAugmentation
+from src.regularizers import SpectralNormRegularizer
 from train_model_utils import get_keyboard_arguments
 from train_model_utils import (models, BASERESULTSDIR, SYNTHETIC_DATADIR)
 
 import tensorflow as tf
 from tensorflow import keras as tfk
 from tensorflow.keras.callbacks import ModelCheckpoint
-TASKDIR = "task_4_sub_2"
+TASKDIR = "task_4_sub_6"
 
 def main():
     # get keyboard arguments ; defined in the file train_model_utils.py
@@ -56,14 +55,12 @@ def main():
                     bn=args.bn,
                     dropout1=0.1,
                     dropout2=0.5,
-                    kernel_regularizer=None,
+                    kernel_regularizer=SpectralNormRegularizer(1e-3, 20),
                     activation=first_act,
                     name="model",
                     factor=args.factor,
                     logits_only=False,
                         )
-        augmentation = MixupAugmentation(alpha=0.2)
-        model = AugmentedModel(model=model, augmentations=[augmentation])
     
         # set up compile options and compile the model
         acc = tfk.metrics.BinaryAccuracy(name='acc')
@@ -129,5 +126,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-        
-        

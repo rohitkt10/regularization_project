@@ -124,6 +124,30 @@ class ModelInterpretabilityCallback(tfkc.Callback):
             filepath = os.path.join(self.savedir, f"epoch_{epoch:03d}.h5")
             self._save_data(scores, filepath)
 
+class DropoutCallback(tfk.callbacks.Callback):
+    def __init__(self, initial_rate, final_rate, wait=2):
+        super().__init__()
+        self.initial_rate = initial_rate
+        self.final_rate = final_rate
+        self.wait = wait
+    
+    def _set_dropout_idx(self):
+        if isinstance(self.model.layers[4], tfk.layers.Dropout):
+            self.idx = 4
+        else:
+            self.idx = 3
+    
+    def on_train_begin(self, logs=None):
+        self._set_dropout_idx()
+        logs = logs or {}
+        self.model.layers[self.idx].rate = self.initial_rate
+
+    def on_epoch_end(self, epoch, logs=None):
+        logs = logs or {}
+        logs['dropout_1'] = self.model.layers[self.idx].rate
+        if self.wait - 1 == epoch:
+            self.model.layers[self.idx].rate = self.final_rate
+
 class LRCallback(tfk.callbacks.Callback):
     def __init__(self, wait=5, factor=10.):
         self.wait = wait 

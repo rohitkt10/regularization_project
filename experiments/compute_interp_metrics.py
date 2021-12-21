@@ -124,6 +124,7 @@ def save_interpretability_results(taskdir, modeltype, factor,):
             print("------------------------------------")
             print("Calculating model interpretability at every training epoch ...")
             metrics = {}
+            model = None ## model is not required because we have the precomputed scores at every epoch
             for i, scores_file in enumerate(attrscoresfiles):
                 print(f"Currently on epoch : {i}")
                 metrics[i] = interp_metrics(model, X, X_model, scores_file=scores_file)

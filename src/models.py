@@ -11,6 +11,10 @@ class _Model(tfk.Model):
     def __init__(self, model, name='custom_model'):
         super().__init__(name=name)
         self._model = model
+    
+    @property
+    def layers(self):
+        return self.model.layers
 
     @property
     def model(self):

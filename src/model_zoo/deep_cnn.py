@@ -20,7 +20,7 @@ def get_model(
     # 1st conv block
     y = tfkl.Conv1D(
             filters=24*factor, kernel_size=19, padding='same',
-            kernel_regularizer=kernel_regularizer)(x)
+            kerbnnel_regularizer=kernel_regularizer)(x)
     if bn:
         y = tfkl.BatchNormalization()(y)
     y = tfkl.Activation(activation)(y)

@@ -55,7 +55,7 @@ def main():
                     bn=args.bn,
                     dropout1=0.1,
                     dropout2=0.5,
-                    kernel_regularizer=SpectralNormRegularizer(1e-3, 20),
+                    kernel_regularizer=SpectralNormRegularizer(1e-2, 20),
                     activation=first_act,
                     name="model",
                     factor=args.factor,

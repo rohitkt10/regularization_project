@@ -8,10 +8,23 @@ class _Model(tfk.Model):
     """
     Useful base class when extending the keras.Model class.
     """
-    def __init__(self, model, name='custom_model'):
+    def __init__(self, model, training=True, name='custom_model'):
         super().__init__(name=name)
         self._model = model
+        self._training = training
     
+    def summary(self):
+        return self.model.summary()
+    
+    @property
+    def training(self):
+        return self._training
+    
+    @training.setter
+    def training(self, t):
+        assert t in [True, False]
+        self._training = t
+        
     @property
     def layers(self):
         return self.model.layers
@@ -48,6 +61,27 @@ class _Model(tfk.Model):
 
     def call(self, *args, **kwargs):
         return self.model.call(*args, **kwargs)
+    
+    def train_step(self, data):
+        x, y = data
+
+        # record differentiable ops
+        with tf.GradientTape() as tape:
+            # make predictions
+            # the training flag is to enable turning bn/dropout on or off
+            y_pred = self.model(x, training=self.training)
+            
+            # compute the total loss 
+            loss = self.compiled_loss(y, y_pred, regularization_losses=self.losses)
+
+        # Compute gradients and take optimization step
+        trainable_vars = self.model.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        # finish up
+        self.compiled_metrics.update_state(y, y_pred)
+        return {m.name: m.result() for m in self.metrics}
 
     def test_step(self, data):
         x,y = data
@@ -56,6 +90,15 @@ class _Model(tfk.Model):
         self.compiled_metrics.update_state(y, ypred)
         res = {m.name:m.result() for m in self.metrics}
         return res
+
+class ModelWrapper(_Model):
+    """
+    Wraps a standard keras model to add custom functionality 
+    implemented in the _Model class.
+    """
+    def __init__(self, model, name='model'):
+        super().__init__(model=model, name=name)
+    
 
 class JacobianRegularizedModel(_Model):
     """
@@ -90,12 +133,12 @@ class JacobianRegularizedModel(_Model):
         # differentiable operations
         with tf.GradientTape(persistent=True) as tape:
             tape.watch(x)
-            ypredlogits = self(x, training=True)
+            ypredlogits = self(x, training=self.training)
             ypred = self.last_layer_activation(ypredlogits)
 
             delta = 0.1*tf.random.normal(shape=tf.shape(x))
             x_noise = x + delta
-            y_noise = self(x_noise, training=True)
+            y_noise = self.model(x_noise, training=True)
             J = tape.batch_jacobian(y_noise, x_noise)  ## (batch, numoutputs, L, A)
             J = tf.reshape(J, (tf.shape(J)[0], -1)) ## (batch, numoutputs*L*A)
             Jfro2 = tf.linalg.norm(J, axis=1)**2  ## (batch,)
@@ -200,8 +243,8 @@ class ManifoldMixupModel(_Model):
         with tf.GradientTape() as tape:
             y_pred, ym_pred = x, xp
             for i, layer in enumerate(self.model.layers):
-                y_pred = layer(y_pred, training=True)
-                ym_pred = layer(ym_pred, training=True)
+                y_pred = layer(y_pred, training=self.training)
+                ym_pred = layer(ym_pred, training=self.training)
                 if i == k:
                     ym_pred = lam*y_pred + (1-lam)*ym_pred # mixup the representation at the kth layer
             
@@ -224,18 +267,23 @@ class ManifoldGaussianNoiseModel(_Model):
     Manifold Gaussian noise is a generalization of the input gaussian noise regularization scheme where 
     intermediate layer representations are mixed up rather than just the input layer
     """
-    def __init__(self, model, ks, stddev=0.1, name="mixup_model"):
+    def __init__(self, model, stddev=0.1, name="mixup_model",):
         """
         ks -> List of layer activation indices to use for manifold mixup.
         """
         super().__init__(model=model, name=name)
         self.noise_dist = tfd.Normal(loc=0., scale=stddev)
+        ks = [0]
+        for i, layer in enumerate(model.layers):
+            if 'activation' in layer.name:
+                if layer.activation.__name__ != 'linear' and layer.activation.__name__ != 'sigmoid':
+                    ks.append(i)
         self.ks = ks
     
     def fit(self, *args, **kwargs):
         if not self.run_eagerly:
-            print("WARNING: This model can only be run in eager mode.Switching run_eagerly property...")
-            self.run_eagerly = False
+            print("WARNING: This model can only be run in eager mode. Switching run_eagerly property...")
+            self.run_eagerly = True
         return super().fit(*args, **kwargs)
 
     def train_step(self, data):
@@ -247,8 +295,8 @@ class ManifoldGaussianNoiseModel(_Model):
         with tf.GradientTape() as tape:
             y_pred, ym_pred = x, x
             for i, layer in enumerate(self.model.layers):
-                y_pred = layer(y_pred, training=True)
-                ym_pred = layer(ym_pred, training=True)
+                y_pred = layer(y_pred, training=self.training)
+                ym_pred = layer(ym_pred, training=self.training)
                 if i == k:
                     ym_pred = ym_pred + self.noise_dist.sample(tf.shape(ym_pred)) # add noise to the representation at the kth layer
             

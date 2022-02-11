@@ -11,7 +11,7 @@ from tfomics import impress, explain, evaluate
 
 from train_model_utils import (models, BASERESULTSDIR, SYNTHETIC_DATADIR)
 from src.utils import _get_synthetic_data
-from src.callbacks import ExtendedEarlyStopping
+from src.callbacks import ExtendedEarlyStopping, EarlyStoppingMarker, CustomCSVLogger
 from src.models import ManifoldGaussianNoiseModel
 
 # parameters 
@@ -111,15 +111,24 @@ def train(model, ckptdir, traindata, validdata, testdata, model_test, fit_verbos
 
     ## set up callbacks
     callbacks = []
-    csvlogger = tfk.callbacks.CSVLogger(os.path.join(ckptdir, "log.csv"))
+    #csvlogger = tfk.callbacks.CSVLogger(os.path.join(ckptdir, "log.csv"))
+    csvlogger = CustomCSVLogger(os.path.join(ckptdir, "log.csv"), testdata, model_test)
     callbacks.append(csvlogger) 
-    es_callback = ExtendedEarlyStopping(
-                                    EPOCHS,
-                                    testdata, 
-                                    model_test,
-                                    ckptdir,
-                                    threshold=0.1,
-                                    top_k=10,
+    # es_callback = ExtendedEarlyStopping(
+    #                                 EPOCHS,
+    #                                 testdata, 
+    #                                 model_test,
+    #                                 ckptdir,
+    #                                 threshold=0.1,
+    #                                 top_k=10,
+    #                                 monitor='val_auroc',
+    #                                 patience=10,
+    #                                 verbose=1,
+    #                                 mode='max',
+    #                                 restore_best_weights=True
+    #                                     )
+    es_callback = EarlyStoppingMarker(
+                                    ckptdir=ckptdir, 
                                     monitor='val_auroc',
                                     patience=10,
                                     verbose=1,
@@ -186,12 +195,7 @@ def main():
                                     factor=factor,
                                     kernel_regularizer=kernel_regularizer,
                                     )
-            ks = [0]
-            for i, layer in enumerate(model.layers):
-                if 'activation' in layer.name:
-                    if layer.activation.__name__ != 'linear' and layer.activation.__name__ != 'sigmoid':
-                        ks.append(i)
-            model = ManifoldGaussianNoiseModel(model=model, ks=ks, stddev=0.15)
+            model = ManifoldGaussianNoiseModel(model=model, stddev=0.15)
             ckptdir = os.path.join(CKPTDIR, f"deep_{factor}", f"trial_{trial+1:02d}")
             if os.path.exists(ckptdir):
                 # dont retrain if results already exist

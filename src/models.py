@@ -99,6 +99,59 @@ class ModelWrapper(_Model):
     def __init__(self, model, name='model'):
         super().__init__(model=model, name=name)
     
+class AdversariallyTrainedModel(_Model):
+    @property 
+    def clean(self):
+        return self._clean
+    
+    @clean.setter
+    def clean(self, c):
+        self._clean = c
+    
+    @property
+    def mix(self):
+        return self._mix 
+    
+    @mix.setter 
+    def mix(self, m):
+        self._mix = m
+    
+    def __init__(self, model, training=True, attacker='pgd', attacker_kwargs=None, name="adversarial_model"):
+        super().__init__(model, training, name)
+        self.attacker_name = attacker
+        if attacker_kwargs is None:
+            if attacker == 'pgd':
+                attacker_kwargs = {
+                                'learning_rate':1e-2, 
+                                'epsilon':0.05, 
+                                'num_steps':10, 
+                                'grad_sign':True, 
+                                'decay':False
+                                    }
+            else:
+                raise ValueError("Only PGD attacker defaults available currently.")
+        self.attacker_kwargs = attacker_kwargs
+        self._clean = False 
+        self._mix = True
+    
+    def compile(self, *args, **kwargs):
+        super().compile(*args, **kwargs)
+        self.attacker = ATTACKERS[self.attacker_name](
+                                            model=self.model, 
+                                            loss=self.model.compiled_loss._losses,
+                                            **self.attacker_kwargs
+                                                    )
+    
+    def train_step(self, data):
+        x, y = data
+        if not self.clean:
+            x_attack = self.attacker.generate(data)
+            if self.mix:
+                x = tf.concat([x_attack, x], axis=0)
+                y = tf.concat([y,y], axis=0)
+            else:
+                x = x_attack
+        return super().train_step((x, y))
 
 class JacobianRegularizedModel(_Model):
     """

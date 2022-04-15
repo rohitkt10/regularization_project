@@ -3,6 +3,8 @@ import tensorflow as tf
 from tensorflow import keras as tfk
 from tensorflow_probability import distributions as tfd
 from .augmentations import Augmentation
+from .attackers import PGDAttack, FGSMAttack
+ATTACKERS = {'pgd':PGDAttack, 'fgsm':FGSMAttack}
 
 class _Model(tfk.Model):
     """
@@ -91,6 +93,45 @@ class _Model(tfk.Model):
         res = {m.name:m.result() for m in self.metrics}
         return res
 
+class EntropyRegularizedModel(_Model):
+    def __init__(self, method="saliency"):
+        pass
+
+    def train_step(self, data):
+        x, y = data
+        with tf.GradientTape() as tape1:
+            tape1.watch(self.model.trainable_variables)
+            with tf.GradientTape(watch_accessed_variables=False) as tape2:
+                tape2.watch(x)
+                xidxs = tf.argmax(x, axis=2)
+
+                # model forward prediction
+                ypred = self.model(x, training=self.training)
+
+            # get the entropy of the saliency maps 
+            P = tape2.gradient(ypred, x) ## (N, L, A)
+            P = tf.gather(P, xidxs, batch_dims=2) ## (N, L,)
+            P = tf.math.abs(P) ## (N,L)
+            Psum = tf.reduce_sum(P, axis=1) ## (N,)
+            P = tf.transpose(tf.transpose(P) / Psum) ## (N, L)
+            logP = tf.math.log(P + 1e-5) ## (N, L)
+            H = tf.reduce_sum(-P*logP, axis=1) ## (N,)
+            Hloss = self.beta*tf.reduce_mean(H, axis=0) ## ()
+
+            # total loss
+            loss = self.compiled_loss(y, ypred, regularization_losses=self.losses)
+
+        # Compute gradients and take optimization step
+        vars = self.model.trainable_variables
+        grads = tape1.gradient(loss, vars)
+        self.optimizer.apply_gradients(zip(grads, vars))
+
+        # finish up
+        self.compiled_metrics.update_state(y, ypred)
+        res = {m.name: m.result() for m in self.metrics}
+        res['entropy_loss'] = Hloss
+        return res 
+
 class ModelWrapper(_Model):
     """
     Wraps a standard keras model to add custom functionality 
@@ -99,60 +140,6 @@ class ModelWrapper(_Model):
     def __init__(self, model, name='model'):
         super().__init__(model=model, name=name)
     
-class AdversariallyTrainedModel(_Model):
-    @property 
-    def clean(self):
-        return self._clean
-    
-    @clean.setter
-    def clean(self, c):
-        self._clean = c
-    
-    @property
-    def mix(self):
-        return self._mix 
-    
-    @mix.setter 
-    def mix(self, m):
-        self._mix = m
-    
-    def __init__(self, model, training=True, attacker='pgd', attacker_kwargs=None, name="adversarial_model"):
-        super().__init__(model, training, name)
-        self.attacker_name = attacker
-        if attacker_kwargs is None:
-            if attacker == 'pgd':
-                attacker_kwargs = {
-                                'learning_rate':1e-2, 
-                                'epsilon':0.05, 
-                                'num_steps':10, 
-                                'grad_sign':True, 
-                                'decay':False
-                                    }
-            else:
-                raise ValueError("Only PGD attacker defaults available currently.")
-        self.attacker_kwargs = attacker_kwargs
-        self._clean = False 
-        self._mix = True
-    
-    def compile(self, *args, **kwargs):
-        super().compile(*args, **kwargs)
-        self.attacker = ATTACKERS[self.attacker_name](
-                                            model=self.model, 
-                                            loss=self.model.compiled_loss._losses,
-                                            **self.attacker_kwargs
-                                                    )
-    
-    def train_step(self, data):
-        x, y = data
-        if not self.clean:
-            x_attack = self.attacker.generate(data)
-            if self.mix:
-                x = tf.concat([x_attack, x], axis=0)
-                y = tf.concat([y,y], axis=0)
-            else:
-                x = x_attack
-        return super().train_step((x, y))
-
 class JacobianRegularizedModel(_Model):
     """
     Regularize the model by adding the squared Frobenius norm
@@ -270,12 +257,17 @@ class ManifoldMixupModel(_Model):
     Manifold mixup is a generalization of the input mixup regularization scheme where 
     intermediate layer representations are mixed up rather than just the input layer
     """
-    def __init__(self, model, ks, alpha=1., name="mixup_model"):
+    def __init__(self, model, alpha=1., name="mixup_model"):
         """
         ks -> List of layer activation indices to use for manifold mixup.
         """
         super().__init__(model=model, name=name)
         self.lam_dist = tfd.Beta(alpha, alpha)
+        ks = [0]
+        for i, layer in enumerate(model.layers):
+            if 'activation' in layer.name:
+                if layer.activation.__name__ != 'linear' and layer.activation.__name__ != 'sigmoid':
+                    ks.append(i)
         self.ks = ks
     
     def fit(self, *args, **kwargs):
@@ -366,3 +358,58 @@ class ManifoldGaussianNoiseModel(_Model):
         # finish up
         self.compiled_metrics.update_state(y, y_pred)
         return {m.name: m.result() for m in self.metrics}
+
+
+class AdversariallyTrainedModel(_Model):
+    @property 
+    def clean(self):
+        return self._clean
+    
+    @clean.setter
+    def clean(self, c):
+        self._clean = c
+    
+    @property
+    def mix(self):
+        return self._mix 
+    
+    @mix.setter 
+    def mix(self, m):
+        self._mix = m
+    
+    def __init__(self, model, training=True, attacker='pgd', attacker_kwargs=None, name="adversarial_model"):
+        super().__init__(model, training, name)
+        self.attacker_name = attacker
+        if attacker_kwargs is None:
+            if attacker == 'pgd':
+                attacker_kwargs = {
+                                'learning_rate':1e-2, 
+                                'epsilon':0.05, 
+                                'num_steps':10, 
+                                'grad_sign':True, 
+                                'decay':False
+                                    }
+            else:
+                raise ValueError("Only PGD attacker defaults available currently.")
+        self.attacker_kwargs = attacker_kwargs
+        self._clean = False 
+        self._mix = True
+    
+    def compile(self, *args, **kwargs):
+        super().compile(*args, **kwargs)
+        self.attacker = ATTACKERS[self.attacker_name](
+                                            model=self.model, 
+                                            loss=self.model.compiled_loss._losses,
+                                            **self.attacker_kwargs
+                                                    )
+    
+    def train_step(self, data):
+        x, y = data
+        if not self.clean:
+            x_attack = self.attacker.generate(data)
+            if self.mix:
+                x = tf.concat([x_attack, x], axis=0)
+                y = tf.concat([y,y], axis=0)
+            else:
+                x = x_attack
+        return super().train_step((x, y))

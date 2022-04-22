@@ -1,4 +1,5 @@
-import numpy as np, os, h5py
+import numpy as np, os, h5py, glob
+import tensorflow as tf
 IN_VIVO_NAMES = ['A549', 'GM12878', 'HeLa-S3']
 
 def _get_synthetic_data(datadir):
@@ -35,3 +36,49 @@ def get_invivo_data(datadir, name='A549'):
         y_test = np.array(dataset['y_test']).astype(np.float32)
     
     return (x_train, y_train), (x_valid, y_valid), (x_test, y_test)
+
+def get_invivo_tfrecords_data(datadir):
+    def _decoder(example):
+        """
+        Decode a single example.
+        """
+        schema = {
+            'length':tf.io.FixedLenFeature([], tf.int64),
+            'depth':tf.io.FixedLenFeature([], tf.int64),
+            "num_labels":tf.io.FixedLenFeature([], tf.int64),
+            'y':tf.io.FixedLenFeature([], tf.string),
+            'x':tf.io.FixedLenFeature([], tf.string),
+        }
+        content = tf.io.parse_single_example(example, schema)
+        length, depth, num_labels = content['length'], content['depth'], content['num_labels']
+        x = tf.io.parse_tensor(content['x'], out_type=tf.uint8)
+        x = tf.reshape(x, shape=(length, depth))
+        x = tf.cast(x, tf.float32)
+        y = tf.io.parse_tensor(content['y'], out_type=tf.uint8)
+        y = tf.reshape(y, shape=(num_labels,))
+        y = tf.cast(y, dtype=x.dtype)
+        return  x, y
+    
+    trainfiles = glob.glob(f"{datadir}/**/train*.tfrecords", recursive=True)
+    traindata = tf.data.TFRecordDataset(
+                            filenames=trainfiles, 
+                            compression_type='GZIP')
+    traindata = traindata.map(_decoder)
+
+    validfiles = glob.glob(f"{datadir}/**/valid*.tfrecords", recursive=True)
+    validdata = tf.data.TFRecordDataset(
+                            filenames=validfiles, 
+                            compression_type='GZIP')
+    validdata = validdata.map(_decoder)
+
+    testfiles = glob.glob(f"{datadir}/**/test*.tfrecords", recursive=True)
+    testdata = tf.data.TFRecordDataset(
+                            filenames=testfiles, 
+                            compression_type='GZIP')
+    testdata = testdata.map(_decoder)
+
+    return traindata, validdata, testdata
+
+
+
+    

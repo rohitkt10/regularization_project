@@ -293,7 +293,10 @@ def main():
     args = parser.parse_args()
 
     # collect arguments 
-    baseresultsdir = args.resdir 
+    debug = args.debug
+    baseresultsdir = args.resdir
+    if debug:
+        baseresultsdir = os.path.join(baseresultsdir, "debug")
     datadir = args.datadir
     dataset_name = args.name
     num_epochs = args.epochs 
